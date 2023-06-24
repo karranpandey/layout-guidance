@@ -3,6 +3,17 @@ import math
 from PIL import Image, ImageDraw, ImageFont
 import logging
 import os
+
+def save_attn_img(attn_map, name):
+    upscale_ratio = 512 / attn_map.shape[1]
+    attn_map = attn_map.detach().cpu().numpy() 
+    attn_map = attn_map.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    attn_map = (attn_map * 255).round().astype("uint8")
+    img = Image.fromarray(attn_map)
+    img.save('./example_output/attn_map_' + name + '.png')
+    return
+
 def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
     loss = 0
     object_number = len(bboxes)
@@ -26,6 +37,9 @@ def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
             for obj_position in object_positions[obj_idx]:
                 ca_map_obj = attn_map[:, :, obj_position].reshape(b, H, W)
 
+                for i in range(b):
+                    save_attn_img(ca_map_obj[i], str(i))
+                
                 activation_value = (ca_map_obj * mask).reshape(b, -1).sum(dim=-1)/ca_map_obj.reshape(b, -1).sum(dim=-1)
 
                 obj_loss += torch.mean((1 - activation_value) ** 2)
