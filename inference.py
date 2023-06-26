@@ -85,7 +85,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
                 unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
 
             save_act_img(activations[0].detach().cpu().numpy().mean(axis=0), 'act')
-            save_attn_img(attn_map_integrated_up[2][2], object_positions, 0)
+            save_attn_img(attn_map_integrated_up[2][2], 0, object_positions)
             
 
             # update latents with guidance
