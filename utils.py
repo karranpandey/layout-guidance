@@ -37,8 +37,8 @@ def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
             for obj_position in object_positions[obj_idx]:
                 ca_map_obj = attn_map[:, :, obj_position].reshape(b, H, W)
 
-                for i in range(b):
-                    save_attn_img(ca_map_obj[i], str(i))
+                #for i in range(b):
+                #    save_attn_img(ca_map_obj[i], str(i))
                 
                 activation_value = (ca_map_obj * mask).reshape(b, -1).sum(dim=-1)/ca_map_obj.reshape(b, -1).sum(dim=-1)
 
