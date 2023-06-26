@@ -1,4 +1,5 @@
 import torch
+import math
 from omegaconf import OmegaConf
 from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, LMSDiscreteScheduler
@@ -25,7 +26,7 @@ def save_attn_img(attn_map, obj_idx, object_positions):
     for obj_position in object_positions[obj_idx]:
         ca_map_obj = attn_map[:, :, obj_position].reshape(b, H, W)
         for i in range(b):
-            save_act_img(ca_map_obj[b], 'attn_obj' + str(obj_idx) + '_' + str(b))
+            save_act_img(ca_map_obj[i].detach().cpu().numpy(), 'attn_obj' + str(obj_idx) + '_' + str(i))
     return
     
 def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger):
@@ -84,7 +85,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
                 unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
 
             save_act_img(activations[0].detach().cpu().numpy().mean(axis=0), 'act')
-            save_attn_img(attn_map_integrated_up[2], object_positions, 0)
+            save_attn_img(attn_map_integrated_up[2][2], object_positions, 0)
             
 
             # update latents with guidance
