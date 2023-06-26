@@ -11,15 +11,21 @@ import os
 from tqdm import tqdm
 
 def save_act_img(act, name):
-    act = act.detach().cpu().numpy()
-    act = act[0]
-    act = act.mean(axis = 0)
     upscale_ratio = 512 / act.shape[1]
     act_map = act.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
     act_map = (act_map - act_map.min()) / (act_map.max() - act_map.min())
     act_map = (act_map * 255).round().astype("uint8")
     img = Image.fromarray(act_map)
-    img.save('./example_output/actn_map_' + name + '.png')
+    img.save('./example_output/' + name + '_map.png')
+    return
+
+def save_attn_img(attn_map, obj_idx, object_positions, name):
+    b, i, j = attn_map.shape
+    H = W = int(math.sqrt(i))
+    for obj_position in object_positions[obj_idx]:
+        ca_map_obj = attn_map[:, :, obj_position].reshape(b, H, W)
+        for i in range(b):
+            save_act_img(ca_map_obj[b], 'attn_' + str(b))
     return
     
 def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger):
@@ -77,7 +83,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
                 unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
 
-            save_act_img(activations, str(0))
+            save_act_img(activations[0].detach().cpu().numpy().mean(axis=0), str(0))
 
             # update latents with guidance
             loss = compute_ca_loss(attn_map_integrated_mid, attn_map_integrated_up, bboxes=bboxes,
