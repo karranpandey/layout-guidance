@@ -10,6 +10,18 @@ import hydra
 import os
 from tqdm import tqdm
 
+def save_act_img(act, name):
+    act = act.detach().cpu().numpy()
+    act = act[0]
+    act = act.mean(axis = 0)
+    upscale_ratio = 512 / act.shape[1]
+    act_map = act.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
+    act_map = (act_map - act_map.min()) / (act_map.max() - act_map.min())
+    act_map = (act_map * 255).round().astype("uint8")
+    img = Image.fromarray(act_map)
+    img.save('./example_output/actn_map_' + name + '.png')
+    return
+    
 def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger):
 
 
@@ -64,6 +76,8 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
                 unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
+
+            save_act_img(activations, str(0))
 
             # update latents with guidance
             loss = compute_ca_loss(attn_map_integrated_mid, attn_map_integrated_up, bboxes=bboxes,
