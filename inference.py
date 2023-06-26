@@ -62,7 +62,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             latents = latents.requires_grad_(True)
             latent_model_input = latents
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
-            noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down = \
+            noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
                 unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
 
             # update latents with guidance
@@ -79,7 +79,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             latent_model_input = torch.cat([latents] * 2)
 
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
-            noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down = \
+            noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
                 unet(latent_model_input, t, encoder_hidden_states=text_embeddings)
 
             noise_pred = noise_pred.sample
