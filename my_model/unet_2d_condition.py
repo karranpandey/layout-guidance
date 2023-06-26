@@ -298,6 +298,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=self.dtype)
         emb = self.time_embedding(t_emb)
         # 2. pre-process
+        sample_tests = []
         sample = self.conv_in(sample)
         # 3. down
         attn_down = []
@@ -310,6 +311,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states
                 )
                 attn_down.append(cross_atten_prob)
+                sample_tests.append(sample)
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
@@ -317,6 +319,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # 4. mid
         sample, attn_mid = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states)
+        sample_tests.append(sample)
 
         # 5. up
         attn_up = []
@@ -340,6 +343,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     upsample_size=upsample_size,
                 )
                 attn_up.append(cross_atten_prob)
+                sample_tests.append(sample)
             else:
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
@@ -352,4 +356,4 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionOutput(sample=sample), attn_up, attn_mid, attn_down
+        return UNet2DConditionOutput(sample=sample), attn_up, attn_mid, attn_down, sample_tests
