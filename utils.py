@@ -13,13 +13,36 @@ def save_attn_img(attn_map, name):
     img = Image.fromarray(attn_map)
     img.save('./example_output/attn_map_' + name + '.png')
     return
-
-#def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, attn_maps_mid_orig, attn_maps_up_orig, activations_orig):
+    
+def normalize_attn(attn_map):
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    attn_map = 10*(attn_map - 0.5)
+    attn_map = 1 / (1 + np.exp(-attn_map))
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    return attn_map
+    
+def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, filtered_act_orig, obj_idx, object_positions):
     #normalize attention maps 
-
+    attn_map = 0
+    for attn_map_integrated in attn_maps_up[0]:
+        attn_map += attn_map_integrated
+        
+    attn_map /= len(attn_maps_up[0])
+    b, i, j = attn_map.shape
+    H = W = int(math.sqrt(i))
+    ca_map_obj = attn_map[:, :, object_positions[obj_idx]].reshape(b, H, W)
+    ca_map_obj = ca_map_obj.mean(axis = 0)
+    ca_map_obj = normalize_attn(ca_map_obj)
+    ca_map_obj = ca_map_obj.view(1, 1, H, W)
+    m = nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
+    ca_map_obj = m(ca_map_obj)
+    
     #find filtered activations 
+    filtered_act = torch.mul(ca_map_obj, activations)
 
     #find L-1 norm
+    loss = torch.mean(filtered_act - filtered_act_orig)
+    return loss
 
 def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
     loss = 0
