@@ -11,7 +11,6 @@ from utils import compute_ca_loss, Pharse2idx, draw_box, setup_logger
 import hydra
 import os
 from tqdm import tqdm
-import torch.nn as nn
 
 def save_act_img(act, name):
     upscale_ratio = 512 / act.shape[1]
@@ -72,12 +71,12 @@ def compute_filtered_act(attn_maps_up, activations, obj_idx, object_positions):
     ca_map_obj = ca_map_obj.mean(axis = 0)
     ca_map_obj = normalize_attn_torch(ca_map_obj)
     ca_map_obj = ca_map_obj.view(1, 1, H, W)
-    m = nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
+    m = torch.nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
     ca_map_obj = m(ca_map_obj)
     
     #find filtered activations 
     filtered_act = torch.mul(ca_map_obj, activations)
-    return filtered_act.detach().cpu().numpy()    
+    return filtered_act   
     
 def filtered_act(attn_map, activations):
     upscale_ratio = 512 / activations.shape[1]
