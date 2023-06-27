@@ -14,6 +14,13 @@ def save_attn_img(attn_map, name):
     img.save('./example_output/attn_map_' + name + '.png')
     return
 
+#def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, attn_maps_mid_orig, attn_maps_up_orig, activations_orig):
+    #normalize attention maps 
+
+    #find filtered activations 
+
+    #find L-1 norm
+
 def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
     loss = 0
     object_number = len(bboxes)
