@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import math
 from omegaconf import OmegaConf
 from transformers import CLIPTextModel, CLIPTokenizer
