@@ -233,10 +233,9 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
     for index, t in enumerate(tqdm(noise_scheduler.timesteps)):
         iteration = 0
         filtered_act_orig = filtered_acts[timestep_num]
-        latents = torch.cat([latents]*2)
         while loss.item() / cfg.inference.loss_scale > 0.00001 and iteration < cfg.inference.max_iter and index < cfg.inference.max_index_step:
             latents = latents.requires_grad_(True)
-            latent_model_input = latents
+            latent_model_input = torch.cat([latents]*2)
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
                 unet(latent_model_input, t, encoder_hidden_states=text_embeddings)
@@ -256,7 +255,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             torch.cuda.empty_cache()
 
         with torch.no_grad():
-            latent_model_input = latents #torch.cat([latents] * 2)
+            latent_model_input = torch.cat([latents]*2) #torch.cat([latents] * 2)
 
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
