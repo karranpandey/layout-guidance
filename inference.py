@@ -38,7 +38,14 @@ def save_attn_img(attn_map, obj_idx, object_positions):
         #for i in range(b):
         #    save_act_img(ca_map_obj[i].detach().cpu().numpy(), 'attn_obj' + str(obj_idx) + '_' + str(i))
     return return_attn_map
-    
+
+def normalize_attn_torch(attn_map):
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    attn_map = 10*(attn_map - 0.5)
+    attn_map = torch.sigmoid(attn_map)
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    return attn_map
+
 def normalize_attn(attn_map):
     attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     attn_map = 10*(attn_map - 0.5)
@@ -56,9 +63,10 @@ def compute_filtered_act(attn_maps_up, activations, obj_idx, object_positions):
     attn_map /= len(attn_maps_up[0])
     b, i, j = attn_map.shape
     H = W = int(math.sqrt(i))
-    ca_map_obj = attn_map[:, :, object_positions[obj_idx]].reshape(b, H, W)
+    print(len(object_positions[obj_idx]))
+    ca_map_obj = attn_map[:, :, object_positions[obj_idx][0]].reshape(b, H, W)
     ca_map_obj = ca_map_obj.mean(axis = 0)
-    ca_map_obj = normalize_attn(ca_map_obj)
+    ca_map_obj = normalize_attn_torch(ca_map_obj)
     ca_map_obj = ca_map_obj.view(1, 1, H, W)
     m = nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
     ca_map_obj = m(ca_map_obj)
@@ -66,7 +74,7 @@ def compute_filtered_act(attn_maps_up, activations, obj_idx, object_positions):
     #find filtered activations 
     filtered_act = torch.mul(ca_map_obj, activations)
     return filtered_act.detach().cpu().numpy()    
-
+    
 def filtered_act(attn_map, activations):
     upscale_ratio = 512 / activations.shape[1]
     act_map = activations.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
