@@ -11,6 +11,7 @@ from utils import compute_ca_loss, Pharse2idx, draw_box, setup_logger
 import hydra
 import os
 from tqdm import tqdm
+import torch.nn as nn
 
 def save_act_img(act, name):
     upscale_ratio = 512 / act.shape[1]
