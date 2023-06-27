@@ -24,25 +24,38 @@ def save_act_img(act, name):
 def save_attn_img(attn_map, obj_idx, object_positions):
     b, i, j = attn_map.shape
     H = W = int(math.sqrt(i))
+    return_attn_map = 0
     for obj_position in object_positions[obj_idx]:
         ca_map_obj = attn_map[:, :, obj_position].reshape(b, H, W)
         cum_attn_map = ca_map_obj.mean(axis = 0)
         cum_attn_map = normalize_attn(cum_attn_map)
         upscale_ratio = 512 / cum_attn_map.shape[1]
         cum_attn_map = cum_attn_map.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
+        return_attn_map = cum_attn_map
         cum_attn_map = (cum_attn_map * 255).round().astype("uint8")
         img = Image.fromarray(cum_attn_map)
         img.save('./example_output/obj' + str(obj_idx) + '_attn_map.png')
         #for i in range(b):
         #    save_act_img(ca_map_obj[i].detach().cpu().numpy(), 'attn_obj' + str(obj_idx) + '_' + str(i))
-    return
-
+    return return_attn_map
+    
 def normalize_attn(attn_map):
     attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     attn_map = 10*(attn_map - 0.5)
     attn_map = 1 / (1 + np.exp(-attn_map))
     attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     return attn_map
+
+def filtered_act(attn_map, activations):
+    upscale_ratio = 512 / activations.shape[1]
+    act_map = activations.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
+    act_map = (act_map - act_map.min()) / (act_map.max() - act_map.min())
+    filtered_act = np.multiply(attn_map, act_map)
+    upscale_ratio = 512 / filtered_act.shape[1]
+    cum_attn_map = filtered_act.repeat(upscale_ratio, axis = 0).repeat(upscale_ratio, axis = 1)
+    cum_attn_map = (cum_attn_map * 255).round().astype("uint8")
+    img = Image.fromarray(cum_attn_map)
+    img.save('./example_output/_filtered_act_map.png')
 
 def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger):
 
@@ -101,7 +114,8 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
 
             save_act_img(activations[0].detach().cpu().numpy().mean(axis=0), 'act')
             attn_map = (1/3.0)*(attn_map_integrated_up[0][0] + attn_map_integrated_up[0][1] + attn_map_integrated_up[0][2])
-            save_attn_img(attn_map.detach().cpu().numpy(), 1, object_positions)
+            final_attn_map = save_attn_img(attn_map.detach().cpu().numpy(), 0, object_positions)
+            filtered_act(final_attn_map, activations[0].detach().cpu().numpy().mean(axis=0))
             
 
             # update latents with guidance
