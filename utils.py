@@ -45,7 +45,7 @@ def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, filtered_a
     ca_map_obj = ca_map_obj.mean(axis = 0)
     ca_map_obj = normalize_attn_torch(ca_map_obj)
     ca_map_obj = ca_map_obj.view(1, 1, H, W)
-    m = nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
+    m = torch.nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
     ca_map_obj = m(ca_map_obj)
     
     #find filtered activations 
