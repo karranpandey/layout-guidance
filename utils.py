@@ -13,7 +13,14 @@ def save_attn_img(attn_map, name):
     img = Image.fromarray(attn_map)
     img.save('./example_output/attn_map_' + name + '.png')
     return
-    
+
+def normalize_attn_torch(attn_map):
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    attn_map = 10*(attn_map - 0.5)
+    attn_map = torch.sigmoid(attn_map)
+    attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
+    return attn_map
+
 def normalize_attn(attn_map):
     attn_map = (attn_map - attn_map.min()) / (attn_map.max() - attn_map.min())
     attn_map = 10*(attn_map - 0.5)
@@ -30,9 +37,13 @@ def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, filtered_a
     attn_map /= len(attn_maps_up[0])
     b, i, j = attn_map.shape
     H = W = int(math.sqrt(i))
-    ca_map_obj = attn_map[:, :, object_positions[obj_idx]].reshape(b, H, W)
+    ca_map_obj = 0
+
+    for object_position in object_positions[obj_idx]:
+        ca_map_obj += attn_map[:,:,object_position].reshape(b,H,W)
+
     ca_map_obj = ca_map_obj.mean(axis = 0)
-    ca_map_obj = normalize_attn(ca_map_obj)
+    ca_map_obj = normalize_attn_torch(ca_map_obj)
     ca_map_obj = ca_map_obj.view(1, 1, H, W)
     m = nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
     ca_map_obj = m(ca_map_obj)
