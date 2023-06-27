@@ -52,7 +52,7 @@ def compute_appearance_loss(attn_maps_mid, attn_maps_up, activations, filtered_a
     filtered_act = torch.mul(ca_map_obj, activations)
 
     #find L-1 norm
-    loss = torch.mean(filtered_act - filtered_act_orig)
+    loss = torch.abs(torch.mean(filtered_act - filtered_act_orig))
     return loss
 
 def compute_ca_loss(attn_maps_mid, attn_maps_up, bboxes, object_positions):
