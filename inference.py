@@ -7,7 +7,7 @@ from diffusers import AutoencoderKL, LMSDiscreteScheduler
 from my_model import unet_2d_condition
 import json
 from PIL import Image
-from utils import compute_ca_loss, Pharse2idx, draw_box, setup_logger
+from utils import compute_ca_loss, Pharse2idx, draw_box, setup_logger, compute_appearance_loss
 import hydra
 import os
 from tqdm import tqdm
@@ -89,7 +89,102 @@ def filtered_act(attn_map, activations):
     img = Image.fromarray(cum_attn_map)
     img.save('./example_output/_filtered_act_map.png')
 
-def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger):
+
+def retrieve_info(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, cfg, logger, examples):
+
+    logger.info("Inference")
+    logger.info(f"Prompt: {prompt}")
+    logger.info(f"Phrases: {phrases}")
+
+    # Get Object Positions
+
+    logger.info("Conver Phrases to Object Positions")
+    object_positions = Pharse2idx(prompt, phrases)
+
+
+    # Encode Classifier Embeddings
+    uncond_input = tokenizer(
+        [""] * cfg.inference.batch_size, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt"
+    )
+    uncond_embeddings = text_encoder(uncond_input.input_ids.to(device))[0]
+
+    # Encode Prompt
+    input_ids = tokenizer(
+            [prompt] * cfg.inference.batch_size,
+            padding="max_length",
+            truncation=True,
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+    cond_embeddings = text_encoder(input_ids.input_ids.to(device))[0]
+    text_embeddings = torch.cat([uncond_embeddings, cond_embeddings])
+    generator = torch.manual_seed(cfg.inference.rand_seed)  # Seed generator to create the inital latent noise
+
+    latents = torch.randn(
+        (cfg.inference.batch_size, 4, 64, 64),
+        generator=generator,
+    ).to(device)
+
+    noise_scheduler = LMSDiscreteScheduler(beta_start=cfg.noise_schedule.beta_start, beta_end=cfg.noise_schedule.beta_end,
+                                           beta_schedule=cfg.noise_schedule.beta_schedule, num_train_timesteps=cfg.noise_schedule.num_train_timesteps)
+
+    noise_scheduler.set_timesteps(cfg.inference.timesteps)
+
+
+    latents = latents * noise_scheduler.init_noise_sigma
+
+
+    loss = torch.tensor(10000)
+
+
+    filtered_acts = []
+
+
+    for index, t in enumerate(tqdm(noise_scheduler.timesteps)):
+        with torch.no_grad():
+            latent_model_input = torch.cat([latents]*2)
+
+
+            latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
+            noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
+                unet(latent_model_input, t, encoder_hidden_states=text_embeddings)
+
+
+            filtered_act = compute_filtered_act(attn_map_integrated_up, activations[0], 0, object_positions)
+
+
+            filtered_acts.append(filtered_act)
+
+
+            noise_pred = noise_pred.sample
+
+
+            # perform guidance
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + cfg.inference.classifier_free_guidance * (noise_pred_text - noise_pred_uncond)
+
+
+            latents = noise_scheduler.step(noise_pred, t, latents).prev_sample
+            torch.cuda.empty_cache()
+
+
+    with torch.no_grad():
+        logger.info("Decode Image...")
+        latents = 1 / 0.18215 * latents
+        image = vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+        images = (image * 255).round().astype("uint8")
+        pil_images = [Image.fromarray(image) for image in images]
+        for index, pil_image in enumerate(pil_images):
+            image_path = os.path.join(cfg.general.save_path, 'example_orig_{}.png'.format(index))
+            logger.info('save example image to {}'.format(image_path))
+            draw_box(pil_image, examples['bboxes'], examples['phrases'], image_path)
+       
+    return filtered_acts
+
+
+def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, filtered_acts, cfg, logger):
 
 
     logger.info("Inference")
@@ -133,27 +228,27 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
     latents = latents * noise_scheduler.init_noise_sigma
 
     loss = torch.tensor(10000)
+    timestep_num = 0
 
     for index, t in enumerate(tqdm(noise_scheduler.timesteps)):
         iteration = 0
-
-        while loss.item() / cfg.inference.loss_scale > cfg.inference.loss_threshold and iteration < cfg.inference.max_iter and index < cfg.inference.max_index_step:
+        filtered_act_orig = filtered_acts[timestep_num]
+        latents = torch.cat([latents]*2)
+        while loss.item() / cfg.inference.loss_scale > 0.00001 and iteration < cfg.inference.max_iter and index < cfg.inference.max_index_step:
             latents = latents.requires_grad_(True)
             latent_model_input = latents
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
-                unet(latent_model_input, t, encoder_hidden_states=cond_embeddings)
-
-            save_act_img(activations[0].detach().cpu().numpy().mean(axis=0), 'act')
-            attn_map = (1/3.0)*(attn_map_integrated_up[0][0] + attn_map_integrated_up[0][1] + attn_map_integrated_up[0][2])
-            final_attn_map = save_attn_img(attn_map.detach().cpu().numpy(), 0, object_positions)
-            filtered_act(final_attn_map, activations[0].detach().cpu().numpy().mean(axis=0))
-            
+                unet(latent_model_input, t, encoder_hidden_states=text_embeddings)
 
             # update latents with guidance
-            loss = compute_ca_loss(attn_map_integrated_mid, attn_map_integrated_up, bboxes=bboxes,
-                                   object_positions=object_positions) * cfg.inference.loss_scale
+            #loss = compute_ca_loss(attn_map_integrated_mid, attn_map_integrated_up, bboxes=bboxes,
+                                   #object_positions=object_positions) * cfg.inference.loss_scale
 
+            loss = compute_appearance_loss(attn_map_integrated_mid, attn_map_integrated_up, activations[0], filtered_act_orig, 0, object_positions) * cfg.inference.loss_scale
+
+            print(loss)
+            
             grad_cond = torch.autograd.grad(loss.requires_grad_(True), [latents])[0]
 
             latents = latents - grad_cond * noise_scheduler.sigmas[index] ** 2
@@ -161,7 +256,7 @@ def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrase
             torch.cuda.empty_cache()
 
         with torch.no_grad():
-            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = latents #torch.cat([latents] * 2)
 
             latent_model_input = noise_scheduler.scale_model_input(latent_model_input, t)
             noise_pred, attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down, activations = \
@@ -224,7 +319,8 @@ def main(cfg):
     OmegaConf.save(cfg, os.path.join(cfg.general.save_path, 'config.yaml'))
 
     # Inference
-    pil_images = inference(device, unet, vae, tokenizer, text_encoder, examples['prompt'], examples['bboxes'], examples['phrases'], cfg, logger)
+    filtered_acts = retrieve_info(device, unet, vae, tokenizer, text_encoder, examples['prompt'], examples['bboxes'], examples['phrases'], cfg, logger, examples)
+    pil_images = inference(device, unet, vae, tokenizer, text_encoder, examples['prompt'], examples['bboxes'], examples['phrases'], filtered_acts, cfg, logger)
 
     # Save example images
     for index, pil_image in enumerate(pil_images):
