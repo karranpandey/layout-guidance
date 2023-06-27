@@ -63,8 +63,11 @@ def compute_filtered_act(attn_maps_up, activations, obj_idx, object_positions):
     attn_map /= len(attn_maps_up[0])
     b, i, j = attn_map.shape
     H = W = int(math.sqrt(i))
-    print(len(object_positions[obj_idx]))
-    ca_map_obj = attn_map[:, :, object_positions[obj_idx][0]].reshape(b, H, W)
+
+    ca_map_obj = 0
+    for object_position in object_positions[obj_idx]:
+        ca_map_obj += attn_map[:,:,object_position].reshape(b,H,W)
+
     ca_map_obj = ca_map_obj.mean(axis = 0)
     ca_map_obj = normalize_attn_torch(ca_map_obj)
     ca_map_obj = ca_map_obj.view(1, 1, H, W)
