@@ -137,8 +137,9 @@ def retrieve_info(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, ph
     loss = torch.tensor(10000)
 
 
-    filtered_acts = []
+    #filtered_acts = []
 
+    data_lists = []
 
     for index, t in enumerate(tqdm(noise_scheduler.timesteps)):
         with torch.no_grad():
@@ -152,6 +153,11 @@ def retrieve_info(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, ph
 
             filtered_act = compute_filtered_act(attn_map_integrated_up, activations[0], 0, object_positions)
 
+            attentions = [attn_map_integrated_up, attn_map_integrated_mid, attn_map_integrated_down]
+            
+            data_list = [attentions, activations]
+
+            data_lists.append(data_list)
 
             filtered_acts.append(filtered_act)
 
@@ -181,7 +187,7 @@ def retrieve_info(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, ph
             logger.info('save example image to {}'.format(image_path))
             draw_box(pil_image, examples['bboxes'], examples['phrases'], image_path)
        
-    return filtered_acts
+    return filtered_acts, data_lists
 
 
 def inference(device, unet, vae, tokenizer, text_encoder, prompt, bboxes, phrases, filtered_acts, cfg, logger):
