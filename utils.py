@@ -4,6 +4,69 @@ from PIL import Image, ImageDraw, ImageFont
 import logging
 import os
 
+import torch
+import torch.nn.functional as F
+
+def compute_filtered_act(attn_maps_up, activations, obj_idx, object_positions):
+    #normalize attention maps 
+    attn_map = 0
+    
+    for attn_map_integrated in attn_maps_up[0]:
+        attn_map += attn_map_integrated
+        
+    attn_map /= len(attn_maps_up[0])
+    b, i, j = attn_map.shape
+    H = W = int(math.sqrt(i))
+
+    ca_map_obj = 0
+    for object_position in object_positions[obj_idx]:
+        ca_map_obj += attn_map[:,:,object_position].reshape(b,H,W)
+
+    ca_map_obj = ca_map_obj.mean(axis = 0)
+    ca_map_obj = normalize_attn_torch(ca_map_obj)
+    ca_map_obj = ca_map_obj.view(1, 1, H, W)
+    m = torch.nn.Upsample(scale_factor=activations.shape[2] / H, mode='nearest')
+    ca_map_obj = m(ca_map_obj)
+    
+    #find filtered activations 
+    filtered_act = torch.mul(ca_map_obj, activations)
+    return filtered_act   
+
+def translate_img(img, tx, ty):
+    """
+    Translate the input image by tx and ty pixels.
+
+    Args:
+    img : (torch.Tensor) input image tensor of shape (B, C, H, W)
+    tx : (float) translation along the x axis
+    ty : (float) translation along the y axis
+
+    Returns:
+    (torch.Tensor): Translated image of shape (B, C, H, W)
+    """
+    B, C, H, W = img.shape
+    # Normalise the translations to be between -1 and 1
+    tx_n = 2*tx/W
+    ty_n = 2*ty/H
+
+    # Create an identity affine transformation matrix
+    theta = torch.tensor([[1, 0, 0], [0, 1, 0]], dtype=torch.float)
+    theta = theta.repeat(B, 1, 1)
+
+    # Apply the translations
+    theta[:, 0, 2] = tx_n
+    theta[:, 1, 2] = ty_n
+
+    # Create a grid for the affine transformation
+    grid = F.affine_grid(theta, size=(B, C, H, W))
+
+    # Sample the input image at the grid points, with zero padding for out-of-bounds pixels
+    img_t = F.grid_sample(img, grid, padding_mode='zeros')
+
+    return img_t
+
+
+
 def save_attn_img(attn_map, name):
     upscale_ratio = 512 / attn_map.shape[1]
     attn_map = attn_map.detach().cpu().numpy() 
